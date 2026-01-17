@@ -29,8 +29,8 @@ To address this, we propose **GDS-ReID**, a graph-guided dual-stream collaborati
   <em>Figure 1: The overall framework of GDS-ReID.</em>
 </div>
 ## 📢 News
-* **[2025-01-17]** This paper has been submitted to ICME 2025.
-* **[Important]** Pre-trained weights and checkpoints will be released **upon paper acceptance**.
+*This paper has been submitted to ICME 2025.
+* Pre-trained weights and checkpoints will be released **upon paper acceptance**.
 
 
 
@@ -47,9 +47,9 @@ To address this, we propose **GDS-ReID**, a graph-guided dual-stream collaborati
 ├── requirements.txt        # Dependencies
 └── train_question.sh       # Training launch script
 
-🙏 Acknowledgements
+##🙏 Acknowledgements
 We would like to express our gratitude to the following open-source projects, which provided the foundation for our work:
-LLaVA-ReID.([https://img.shields.io/badge/Paper-ICME_Submission-blue](https://github.com/XLearning-SCU/LLaVA-ReID))
+LLaVA-ReID.((https://github.com/XLearning-SCU/LLaVA-ReID))
 IRRA: Cross-Modal Implicit Relation Reasoning and Alignment for Text-to-Image Person Retrieval.
 
 
