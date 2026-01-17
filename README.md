@@ -108,7 +108,7 @@ To evaluate the model on the test sets:
 python main_eval.py --config config/Interactive-PEDES.yaml \
     --resume /path/to/your/checkpoint/pytorch_model.bin
 
-
+```
 
 ## 🙏 Acknowledgements
 
