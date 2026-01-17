@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="page1.jpg" width="80%">
+<img src="page1.pngpng" width="80%">
 
 [![Paper](https://img.shields.io/badge/Paper-ICME_Submission-blue)](ICME4ReID.pdf)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
