@@ -34,12 +34,11 @@ from .llava.conversation import conv_templates
 from .llava.mm_utils import tokenizer_image_token, process_images
 from .llava.train.train_utils import pad_sequence
 from .llava.utils import rank0_print
-from .llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
+from .llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN 
 from .llava_reid_utils import delete_prefix, load_llava_reid_model, process_image_train
 from .selector import Selector, SelectorConfig
 
 warnings.filterwarnings("ignore", category=UserWarning)
-
 
 # =============================================================================
 # AnswerGeneratorVLLM
@@ -52,7 +51,7 @@ class AnswerGeneratorVLLM:
 
     def fuse_results(self, global_qa, local_qa):
         results = [""] * len(global_qa)
-
+        
         def _fuse_one(g_qa, l_qa):
             # [修正] 更加安全的融合策略
             fusion_prompt = (
@@ -73,7 +72,7 @@ class AnswerGeneratorVLLM:
                         {"role": "system", "content": "You are a concise fact summarizer."},
                         {"role": "user", "content": fusion_prompt}
                     ],
-                    temperature=0.1,
+                    temperature=0.1, 
                     max_tokens=64
                 )
                 return response.choices[0].message.content.strip()
@@ -83,7 +82,7 @@ class AnswerGeneratorVLLM:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
             future_to_idx = {
-                executor.submit(_fuse_one, global_qa[i], local_qa[i]): i
+                executor.submit(_fuse_one, global_qa[i], local_qa[i]): i 
                 for i in range(len(global_qa))
             }
             for future in concurrent.futures.as_completed(future_to_idx):
@@ -101,20 +100,18 @@ class AnswerGeneratorVLLM:
                 temperature=0.0, max_tokens=64, top_p=1.0
             )
             return response.choices[0].message.content.strip().replace("assistant\n", "").strip()
-        except:
-            return ""
+        except: return ""
 
     def __call__(self, contexts, questions):
         results = [None] * len(contexts)
         with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
             future_to_idx = {
-                executor.submit(self._get_one_answer, contexts[i], questions[i]): i
+                executor.submit(self._get_one_answer, contexts[i], questions[i]): i 
                 for i in range(len(contexts))
             }
             for future in concurrent.futures.as_completed(future_to_idx):
                 results[future_to_idx[future]] = future.result()
         return results
-
 
 # =============================================================================
 # Main Class
@@ -132,105 +129,18 @@ class LlavaForPersonReID(nn.Module):
         self.stage = config.stage
         if llava_config is not None and "data_args" in llava_config:
             self.image_folder = llava_config["data_args"].image_folder
-
+        
         if self.stage == "eval":
             self.retrieval_model = self._build_retrieval_model(config, self.retriever_device, False, logger)
             self.question_model = LlavaForPersonReIDQuestionModel(config, llava_config, logger)
-            self.answer_model = AnswerGeneratorVLLM(base_url="http://localhost:8000/v1",
-                                                    model_name="/home/liuteli/reid/ijcai/LLaVA-ReID/Qwen/Qwen2.5-7B-Instruct")
+            self.answer_model = AnswerGeneratorVLLM(base_url="http://localhost:8000/v1", model_name="/home/liuteli/reid/ijcai/LLaVA-ReID/Qwen/Qwen2.5-7B-Instruct")
             self.forward = self._inference
-        elif self.stage == "prepare_data":
-            # 在 prepare_data 阶段也需要初始化 retrieval_model 来编码图像
-            self.retrieval_model = self._build_retrieval_model(config, self.retriever_device, False, logger)
-            # 如果配置了 question_model_path，则加载预训练的 question_model
-            if hasattr(config, 'question_model_path') and config.question_model_path:
-                import os
-                if os.path.exists(config.question_model_path):
-                    self.question_model = LlavaForPersonReIDQuestionModel(config,
-                                                                          {"model_path": config.question_model_path},
-                                                                          logger)
-                else:
-                    if logger:
-                        logger.warning(
-                            f"question_model_path {config.question_model_path} does not exist, QA_indices will be set to -100")
-            self.forward = self._prepare_data_forward
-        elif self.stage == "train_questioner":
-            # 训练提问器阶段需要初始化 question_model 和 retrieval_model
-            self.retrieval_model = self._build_retrieval_model(config, self.retriever_device, False, logger)
-            self.question_model = LlavaForPersonReIDQuestionModel(config, llava_config, logger)
-            # train_questioner 阶段的 forward 方法由 LLaVATrainer 处理，这里不需要设置
-        elif self.stage == "train_retriever":
-            # 训练检索模型阶段
-            self.retrieval_model = self._build_retrieval_model(config, self.retriever_device, True, logger)
-            self.forward = self._train_retriever
-        else:
-            # 默认 forward 方法
-            self.forward = self._default_forward
+        else: pass
 
     # ... (省略辅助函数) ...
-    def _train_retriever(self, batch):
-        # 训练检索模型的 forward 方法
-        return self.retrieval_model(batch)
-
+    def _train_retriever(self, batch): pass
     @torch.no_grad()
-    def _prepare_data_forward(self, batch):
-        # prepare_data 阶段的 forward 方法
-        if "images" in batch:
-            # 编码图像特征
-            image_feats = self.retrieval_model.encode_image(batch["images"].to(self.retriever_device))[:, 0, :]
-            ret = EasyDict({"image_feats": image_feats})
-            if "image_id" in batch:
-                ret.image_id = batch["image_id"]
-            elif "image_ids" in batch:
-                ret.image_ids = batch["image_ids"]
-            return ret
-        else:
-            # 处理不包含 images 的情况（用于准备对话数据）
-            # 从 batch 中提取 image_ids 和 QA_indices
-            ret = EasyDict({})
-            if "image_ids" in batch:
-                ret.image_ids = batch["image_ids"]
-            elif "image_id" in batch:
-                ret.image_ids = batch["image_id"]
-            # QA_indices 应该从 batch 中获取，如果不存在则使用 question_model 生成
-            if "QA_indices" in batch:
-                ret.QA_indices = batch["QA_indices"]
-            else:
-                # 如果 batch 中没有 QA_indices，尝试使用 question_model 生成或使用数据集中的问题
-                n_samples = len(ret.image_ids) if hasattr(ret, 'image_ids') else 1
-                QA_indices = torch.zeros((n_samples, self.interact_round), dtype=torch.int,
-                                         device=self.retriever_device)
-
-                # 从 batch 中获取 questions 列表
-                questions_list = batch.get('questions', [])
-                if isinstance(questions_list, list) and len(questions_list) > 0:
-                    # 使用数据集中的问题和答案，选择前 interact_round 个
-                    for i in range(n_samples):
-                        if i < len(questions_list) and isinstance(questions_list[i], list):
-                            num_questions = min(self.interact_round, len(questions_list[i]))
-                            for r in range(num_questions):
-                                QA_indices[i, r] = r
-                            # 如果问题数量不足，剩余位置设为 -100
-                            for r in range(num_questions, self.interact_round):
-                                QA_indices[i, r] = -100
-                        else:
-                            # 如果没有问题，全部设为 -100
-                            QA_indices[i, :] = -100
-                else:
-                    # 如果没有问题列表，全部设为 -100
-                    QA_indices.fill_(-100)
-
-                ret.QA_indices = QA_indices
-            return ret
-
-    @torch.no_grad()
-    def _prepare_data(self, batch):
-        pass
-
-    def _default_forward(self, batch):
-        # 默认的 forward 方法
-        raise NotImplementedError(f"Forward method not implemented for stage: {self.stage}")
-
+    def _prepare_data(self, batch): pass
     @torch.no_grad()
     def encode_text(self, text):
         with torch.amp.autocast('cuda', enabled=True):
@@ -238,21 +148,15 @@ class LlavaForPersonReID(nn.Module):
             text_tokens = torch.stack(text_tokens, dim=0).to(self.retriever_device)
             text_feats = F.normalize(self.retrieval_model.encode_text(text_tokens), dim=-1)
         return text_feats
-
     @torch.no_grad()
     def set_gallery(self, gallery_cls, gallery_image_path, **kwargs):
         self.gallery_cls = F.normalize(gallery_cls.to(self.retriever_device), dim=-1)
         self.gallery_path = gallery_image_path
         if "gallery_pid" in kwargs.keys(): self.gallery_pid = kwargs.pop("gallery_pid").to(self.retriever_device)
-
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs):
         return self.question_model.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs)
-
     def _build_retrieval_model(self, cfg, device, training=True, logger=None):
-        retrieval_model_config = EasyDict(
-            {'pretrain_choice': cfg.clip_pretrain_model, 'img_size': cfg.img_size, 'stride_size': cfg.stride_size,
-             'text_length': cfg.max_retrieve_length, 'temperature': cfg.temperature, 'vocab_size': cfg.vocab_size,
-             'training': cfg.stage == "train_retriever", 'num_classes': cfg.num_classes})
+        retrieval_model_config = EasyDict({'pretrain_choice': cfg.clip_pretrain_model, 'img_size': cfg.img_size, 'stride_size': cfg.stride_size, 'text_length': cfg.max_retrieve_length, 'temperature': cfg.temperature, 'vocab_size': cfg.vocab_size, 'training': cfg.stage == "train_retriever", 'num_classes': cfg.num_classes})
         retrieval_model = IRRA(retrieval_model_config, device)
         ckpt_path = os.path.join(cfg.output_dir, 'retrieval_model_mix_IRRA', 'checkpoint.pth')
         if os.path.exists(ckpt_path):
@@ -262,7 +166,6 @@ class LlavaForPersonReID(nn.Module):
         retrieval_model.to(device).eval()
         self.clip_tokenizer = SimpleTokenizer()
         return retrieval_model
-
     @torch.no_grad()
     def get_topK_images(self, text_feats: torch.Tensor, k: torch.Tensor):
         N, max_K = text_feats.shape[0], self.num_potential_candidates
@@ -286,21 +189,19 @@ class LlavaForPersonReID(nn.Module):
         hard_negatives_indices = []
 
         for i in range(B):
-            feats = image_feats[i]
+            feats = image_feats[i] 
             sim_matrix = feats @ feats.T
             rank0_sims = sim_matrix[0]
-            rank0_sims[0] = -1.0  # 排除自己
+            rank0_sims[0] = -1.0 # 排除自己
             hard_idx = torch.argmax(rank0_sims).item()
             hard_negatives_indices.append(hard_idx)
-
+            
         return hard_negatives_indices
 
     @torch.no_grad()
     def _inference(self, batch):
-        if "images" in batch:
-            return EasyDict(
-                {"image_feats": self.retrieval_model.encode_image(batch["images"].to(self.retriever_device))[:, 0, :],
-                 "image_id": batch["image_id"]})
+        if "images" in batch: 
+            return EasyDict({"image_feats": self.retrieval_model.encode_image(batch["images"].to(self.retriever_device))[:, 0, :], "image_id": batch["image_id"]})
 
         B = len(batch["initial_description"])
         initial_description = batch["initial_description"]
@@ -308,35 +209,31 @@ class LlavaForPersonReID(nn.Module):
         questions_log = [[] for _ in range(B)]
         answers_log = [[] for _ in range(B)]
         ret_dict = EasyDict({"text_id": batch["text_id"], "text_feats": [], "conversations": []})
-        for i in range(B): ret_dict.conversations.append(
-            {"id": batch['text_id'][i].item(), "initial_query": initial_description[i], "interaction": []})
+        for i in range(B): ret_dict.conversations.append({"id": batch['text_id'][i].item(), "initial_query": initial_description[i], "interaction": []})
 
         for r in tqdm(range(self.interact_round), desc="Graph-Guided ReID", file=sys.stdout, ncols=75):
             text_feats = self.encode_text(collection)
-            k = torch.full([B], fill_value=math.ceil(self.num_potential_candidates / (r + 1)),
-                           device=self.retriever_device)
-
+            k = torch.full([B], fill_value=math.ceil(self.num_potential_candidates / (r + 1)), device=self.retriever_device)
+            
             image_indices, image_feats_topk, _ = self.get_topK_images(text_feats, k)
             image_indices_view = image_indices.view(B, -1)
-
+            
             # Step 1: 寻找 Graph Neighbor
             hard_negative_offsets = self.find_hard_negatives_via_graph(image_feats_topk[:, :8, :])
 
             # Step 2: 准备双流数据
-            global_paths = []
-            local_paths = []
+            global_paths = [] 
+            local_paths = [] 
 
             for idx in range(B):
                 indices = image_indices_view[idx]
-                global_paths.append([self.gallery_path[indices[0]]])  # Stream A
+                global_paths.append([self.gallery_path[indices[0]]]) # Stream A
                 hard_idx = hard_negative_offsets[idx]
-                local_paths.append([self.gallery_path[indices[0]], self.gallery_path[indices[hard_idx]]])  # Stream B
+                local_paths.append([self.gallery_path[indices[0]], self.gallery_path[indices[hard_idx]]]) # Stream B
 
             # Step 3: 并行提问
-            q_global = self.question_model.generate_questions(initial_description, global_paths, questions_log,
-                                                              answers_log, mode="global")
-            q_local = self.question_model.generate_questions(initial_description, local_paths, questions_log,
-                                                             answers_log, mode="local")
+            q_global = self.question_model.generate_questions(initial_description, global_paths, questions_log, answers_log, mode="global")
+            q_local = self.question_model.generate_questions(initial_description, local_paths, questions_log, answers_log, mode="local")
 
             # Step 4: 并行回答
             a_global = self.answer_model(batch['fine-grained_description'], q_global)
@@ -361,10 +258,9 @@ class LlavaForPersonReID(nn.Module):
         text_feats = self.encode_text(collection)
         ret_dict.text_feats.append(text_feats.unsqueeze(0))
         ret_dict.text_feats = torch.cat(ret_dict.text_feats, dim=0)
-
+        
         if B > 0: print(f"\n[Case 0] Final Update: {fused_updates[0]}")
         return ret_dict
-
 
 # =============================================================================
 # Question Model (Prompt 修正版)
@@ -384,17 +280,16 @@ class LlavaForPersonReIDQuestionModel(nn.Module):
         self.mini_batch_size = 4
         self.stage = questioner_config.stage
 
-    def forward(self, *args, **kwargs):
-        return self.model(*args, **kwargs)
+    def forward(self, *args, **kwargs): return self.model(*args, **kwargs)
 
     def generate_questions(self, initial_query, candidate_images, questions_log, answers_log, mode="global"):
         B = len(initial_query)
         question_all = []
-
-        # [修正]
+        
+        # [修正] 
         # Global: 传统的 ReID 问题，微调模型最擅长
         prompt_global = "Describe the person's gender, clothing color, and any visible bags. Question: What are the main attributes?"
-
+        
         # Local: 引导模型描述 Image 1，利用 Image 2 作为背景参考，但不强行对比
         prompt_local = (
             "Look at Image 1 (Target). "
@@ -408,7 +303,7 @@ class LlavaForPersonReIDQuestionModel(nn.Module):
             batch_images = candidate_images[idx:end_idx]
             batch_q_log = questions_log[idx:end_idx]
             batch_a_log = answers_log[idx:end_idx]
-
+            
             image_all = [Image.open(img) for sublist in batch_images for img in sublist]
             image_tensor = process_images(image_all, self.image_processor, self.model.config)
             image_tensor = [_image.to(dtype=torch.bfloat16) for _image in image_tensor]
@@ -417,17 +312,14 @@ class LlavaForPersonReIDQuestionModel(nn.Module):
             if mode == "local":
                 prompts_batch = [prompt_local for _ in batch_query]
             else:
-                prompts_batch = wrap_question_prompt(self.prompt_q, batch_query, batch_q_log, batch_a_log,
-                                                     len(batch_images[0]), True)
+                prompts_batch = wrap_question_prompt(self.prompt_q, batch_query, batch_q_log, batch_a_log, len(batch_images[0]), True)
 
             input_ids_list = []
             for i in range(len(batch_query)):
                 conv = deepcopy(self.conv_template)
                 curr_prompt = prompts_batch[i]
-                if DEFAULT_IMAGE_TOKEN not in curr_prompt:
-                    inp = DEFAULT_IMAGE_TOKEN + '\n' + curr_prompt
-                else:
-                    inp = curr_prompt
+                if DEFAULT_IMAGE_TOKEN not in curr_prompt: inp = DEFAULT_IMAGE_TOKEN + '\n' + curr_prompt
+                else: inp = curr_prompt
                 conv.append_message(conv.roles[0], inp)
                 conv.append_message(conv.roles[1], None)
                 prompt_text = conv.get_prompt()
@@ -449,5 +341,4 @@ class LlavaForPersonReIDQuestionModel(nn.Module):
             question_all.extend([q.replace("assistant\n", "").strip() for q in questions])
         return question_all
 
-    def get_model(self):
-        return self.model
+    def get_model(self): return self.model
