@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="fig.png" width="80%">
+<img src="img/fig.png" width="80%">
 
 [![Paper](https://img.shields.io/badge/Paper-ICME_Submission-blue)](ICME4ReID.pdf)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
@@ -28,7 +28,7 @@ To address this, we propose **GDS-ReID**, a graph-guided dual-stream collaborati
     * **Local Stream:** Performs neighbor-aware pairwise comparison to extract fine-grained differential evidence using mined hard negatives.
 
 <div align="center">
-  <img src="page1.png" width="100%">
+  <img src="img/page1.png" width="100%">
   <br>
   <em>Figure 1: The overall framework of GDS-ReID.</em>
 </div>
